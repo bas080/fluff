@@ -1,0 +1,14 @@
+#!/bin/bash
+
+source ./script/precommit
+
+be_pushable() {
+  git push --no-verify --dry-run || error "maybe push with -f and -n"
+}
+
+have_a_clean_repo() {
+  test -z "$(git status --porcelain)"
+}
+
+should have_a_clean_repo
+should be_pushable

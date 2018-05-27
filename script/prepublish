@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+source ./script/prepush
+
+have_no_fixup_commits() {
+  ! git log --oneline | grep 'fixup!'
+}
+
+not_differ_from_origin_master() {
+  git fetch origin &> /dev/null
+  git diff origin/master --exit-code
+}
+
+should have_no_fixup_commits
+should not_differ_from_origin_master
+
+version=$(node -p "require('./package.json').version")
+
+echo "publishing $version"
+
+git tag $version
+git push $version

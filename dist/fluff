@@ -1,0 +1,1110 @@
+#!/usr/bin/env node
+'use strict';
+
+function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
+
+var fs = require('fs');
+var fs__default = _interopDefault(fs);
+var path = _interopDefault(require('path'));
+var crypto = _interopDefault(require('crypto'));
+var stream = require('stream');
+
+var isWindows = process.platform === 'win32';
+var trailingSlashRe = isWindows ? /[^:]\\$/ : /.\/$/;
+
+// https://github.com/nodejs/node/blob/3e7a14381497a3b73dda68d05b5130563cdab420/lib/os.js#L25-L43
+var osTmpdir = function () {
+	var path$$1;
+
+	if (isWindows) {
+		path$$1 = process.env.TEMP ||
+			process.env.TMP ||
+			(process.env.SystemRoot || process.env.windir) + '\\temp';
+	} else {
+		path$$1 = process.env.TMPDIR ||
+			process.env.TMP ||
+			process.env.TEMP ||
+			'/tmp';
+	}
+
+	if (trailingSlashRe.test(path$$1)) {
+		path$$1 = path$$1.slice(0, -1);
+	}
+
+	return path$$1;
+};
+
+/*!
+ * Tmp
+ *
+ * Copyright (c) 2011-2017 KARASZI Istvan <github@spam.raszi.hu>
+ *
+ * MIT Licensed
+ */
+
+/*
+ * Module dependencies.
+ */
+
+
+
+
+const _c = process.binding('constants');
+
+/*
+ * The working inner variables.
+ */
+const
+  /**
+   * The temporary directory.
+   * @type {string}
+   */
+  tmpDir = osTmpdir(),
+
+  // the random characters to choose from
+  RANDOM_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+
+  TEMPLATE_PATTERN = /XXXXXX/,
+
+  DEFAULT_TRIES = 3,
+
+  CREATE_FLAGS = (_c.O_CREAT || _c.fs.O_CREAT) | (_c.O_EXCL || _c.fs.O_EXCL) | (_c.O_RDWR || _c.fs.O_RDWR),
+
+  EBADF = _c.EBADF || _c.os.errno.EBADF,
+  ENOENT = _c.ENOENT || _c.os.errno.ENOENT,
+
+  DIR_MODE = 448 /* 0o700 */,
+  FILE_MODE = 384 /* 0o600 */,
+
+  // this will hold the objects need to be removed on exit
+  _removeObjects = [];
+
+var
+  _gracefulCleanup = false,
+  _uncaughtException = false;
+
+/**
+ * Random name generator based on crypto.
+ * Adapted from http://blog.tompawlak.org/how-to-generate-random-values-nodejs-javascript
+ *
+ * @param {number} howMany
+ * @returns {string} the generated random name
+ * @private
+ */
+function _randomChars(howMany) {
+  var
+    value = [],
+    rnd = null;
+
+  // make sure that we do not fail because we ran out of entropy
+  try {
+    rnd = crypto.randomBytes(howMany);
+  } catch (e) {
+    rnd = crypto.pseudoRandomBytes(howMany);
+  }
+
+  for (var i = 0; i < howMany; i++) {
+    value.push(RANDOM_CHARS[rnd[i] % RANDOM_CHARS.length]);
+  }
+
+  return value.join('');
+}
+
+/**
+ * Checks whether the `obj` parameter is defined or not.
+ *
+ * @param {Object} obj
+ * @returns {boolean} true if the object is undefined
+ * @private
+ */
+function _isUndefined(obj) {
+  return typeof obj === 'undefined';
+}
+
+/**
+ * Parses the function arguments.
+ *
+ * This function helps to have optional arguments.
+ *
+ * @param {(Options|Function)} options
+ * @param {Function} callback
+ * @returns {Array} parsed arguments
+ * @private
+ */
+function _parseArguments(options, callback) {
+  if (typeof options == 'function') {
+    return [callback || {}, options];
+  }
+
+  if (_isUndefined(options)) {
+    return [{}, callback];
+  }
+
+  return [options, callback];
+}
+
+/**
+ * Generates a new temporary name.
+ *
+ * @param {Object} opts
+ * @returns {string} the new random name according to opts
+ * @private
+ */
+function _generateTmpName(opts) {
+  if (opts.name) {
+    return path.join(opts.dir || tmpDir, opts.name);
+  }
+
+  // mkstemps like template
+  if (opts.template) {
+    return opts.template.replace(TEMPLATE_PATTERN, _randomChars(6));
+  }
+
+  // prefix and postfix
+  const name = [
+    opts.prefix || 'tmp-',
+    process.pid,
+    _randomChars(12),
+    opts.postfix || ''
+  ].join('');
+
+  return path.join(opts.dir || tmpDir, name);
+}
+
+/**
+ * Gets a temporary file name.
+ *
+ * @param {(Options|tmpNameCallback)} options options or callback
+ * @param {?tmpNameCallback} callback the callback function
+ */
+function tmpName(options, callback) {
+  var
+    args = _parseArguments(options, callback),
+    opts = args[0],
+    cb = args[1],
+    tries = opts.name ? 1 : opts.tries || DEFAULT_TRIES;
+
+  if (isNaN(tries) || tries < 0)
+    return cb(new Error('Invalid tries'));
+
+  if (opts.template && !opts.template.match(TEMPLATE_PATTERN))
+    return cb(new Error('Invalid template provided'));
+
+  (function _getUniqueName() {
+    const name = _generateTmpName(opts);
+
+    // check whether the path exists then retry if needed
+    fs__default.stat(name, function (err) {
+      if (!err) {
+        if (tries-- > 0) return _getUniqueName();
+
+        return cb(new Error('Could not get a unique tmp filename, max tries reached ' + name));
+      }
+
+      cb(null, name);
+    });
+  }());
+}
+
+/**
+ * Synchronous version of tmpName.
+ *
+ * @param {Object} options
+ * @returns {string} the generated random name
+ * @throws {Error} if the options are invalid or could not generate a filename
+ */
+function tmpNameSync(options) {
+  var
+    args = _parseArguments(options),
+    opts = args[0],
+    tries = opts.name ? 1 : opts.tries || DEFAULT_TRIES;
+
+  if (isNaN(tries) || tries < 0)
+    throw new Error('Invalid tries');
+
+  if (opts.template && !opts.template.match(TEMPLATE_PATTERN))
+    throw new Error('Invalid template provided');
+
+  do {
+    const name = _generateTmpName(opts);
+    try {
+      fs__default.statSync(name);
+    } catch (e) {
+      return name;
+    }
+  } while (tries-- > 0);
+
+  throw new Error('Could not get a unique tmp filename, max tries reached');
+}
+
+/**
+ * Creates and opens a temporary file.
+ *
+ * @param {(Options|fileCallback)} options the config options or the callback function
+ * @param {?fileCallback} callback
+ */
+function file(options, callback) {
+  var
+    args = _parseArguments(options, callback),
+    opts = args[0],
+    cb = args[1];
+
+  opts.postfix = (_isUndefined(opts.postfix)) ? '.tmp' : opts.postfix;
+
+  // gets a temporary filename
+  tmpName(opts, function _tmpNameCreated(err, name) {
+    if (err) return cb(err);
+
+    // create and open the file
+    fs__default.open(name, CREATE_FLAGS, opts.mode || FILE_MODE, function _fileCreated(err, fd) {
+      if (err) return cb(err);
+
+      if (opts.discardDescriptor) {
+        return fs__default.close(fd, function _discardCallback(err) {
+          if (err) {
+            // Low probability, and the file exists, so this could be
+            // ignored.  If it isn't we certainly need to unlink the
+            // file, and if that fails too its error is more
+            // important.
+            try {
+              fs__default.unlinkSync(name);
+            } catch (e) {
+              if (!isENOENT(e)) {
+                err = e;
+              }
+            }
+            return cb(err);
+          }
+          cb(null, name, undefined, _prepareTmpFileRemoveCallback(name, -1, opts));
+        });
+      }
+      if (opts.detachDescriptor) {
+        return cb(null, name, fd, _prepareTmpFileRemoveCallback(name, -1, opts));
+      }
+      cb(null, name, fd, _prepareTmpFileRemoveCallback(name, fd, opts));
+    });
+  });
+}
+
+/**
+ * Synchronous version of file.
+ *
+ * @param {Options} options
+ * @returns {FileSyncObject} object consists of name, fd and removeCallback
+ * @throws {Error} if cannot create a file
+ */
+function fileSync(options) {
+  var
+    args = _parseArguments(options),
+    opts = args[0];
+
+  opts.postfix = opts.postfix || '.tmp';
+
+  const discardOrDetachDescriptor = opts.discardDescriptor || opts.detachDescriptor;
+  const name = tmpNameSync(opts);
+  var fd = fs__default.openSync(name, CREATE_FLAGS, opts.mode || FILE_MODE);
+  if (opts.discardDescriptor) {
+    fs__default.closeSync(fd); 
+    fd = undefined;
+  }
+
+  return {
+    name: name,
+    fd: fd,
+    removeCallback: _prepareTmpFileRemoveCallback(name, discardOrDetachDescriptor ? -1 : fd, opts)
+  };
+}
+
+/**
+ * Removes files and folders in a directory recursively.
+ *
+ * @param {string} root
+ * @private
+ */
+function _rmdirRecursiveSync(root) {
+  const dirs = [root];
+
+  do {
+    var
+      dir = dirs.pop(),
+      deferred = false,
+      files = fs__default.readdirSync(dir);
+
+    for (var i = 0, length = files.length; i < length; i++) {
+      var
+        file = path.join(dir, files[i]),
+        stat = fs__default.lstatSync(file); // lstat so we don't recurse into symlinked directories
+
+      if (stat.isDirectory()) {
+        if (!deferred) {
+          deferred = true;
+          dirs.push(dir);
+        }
+        dirs.push(file);
+      } else {
+        fs__default.unlinkSync(file);
+      }
+    }
+
+    if (!deferred) {
+      fs__default.rmdirSync(dir);
+    }
+  } while (dirs.length !== 0);
+}
+
+/**
+ * Creates a temporary directory.
+ *
+ * @param {(Options|dirCallback)} options the options or the callback function
+ * @param {?dirCallback} callback
+ */
+function dir(options, callback) {
+  var
+    args = _parseArguments(options, callback),
+    opts = args[0],
+    cb = args[1];
+
+  // gets a temporary filename
+  tmpName(opts, function _tmpNameCreated(err, name) {
+    if (err) return cb(err);
+
+    // create the directory
+    fs__default.mkdir(name, opts.mode || DIR_MODE, function _dirCreated(err) {
+      if (err) return cb(err);
+
+      cb(null, name, _prepareTmpDirRemoveCallback(name, opts));
+    });
+  });
+}
+
+/**
+ * Synchronous version of dir.
+ *
+ * @param {Options} options
+ * @returns {DirSyncObject} object consists of name and removeCallback
+ * @throws {Error} if it cannot create a directory
+ */
+function dirSync(options) {
+  var
+    args = _parseArguments(options),
+    opts = args[0];
+
+  const name = tmpNameSync(opts);
+  fs__default.mkdirSync(name, opts.mode || DIR_MODE);
+
+  return {
+    name: name,
+    removeCallback: _prepareTmpDirRemoveCallback(name, opts)
+  };
+}
+
+/**
+ * Prepares the callback for removal of the temporary file.
+ *
+ * @param {string} name the path of the file
+ * @param {number} fd file descriptor
+ * @param {Object} opts
+ * @returns {fileCallback}
+ * @private
+ */
+function _prepareTmpFileRemoveCallback(name, fd, opts) {
+  const removeCallback = _prepareRemoveCallback(function _removeCallback(fdPath) {
+    try {
+      if (0 <= fdPath[0]) {
+        fs__default.closeSync(fdPath[0]);
+      }
+    }
+    catch (e) {
+      // under some node/windows related circumstances, a temporary file
+      // may have not be created as expected or the file was already closed
+      // by the user, in which case we will simply ignore the error
+      if (!isEBADF(e) && !isENOENT(e)) {
+        // reraise any unanticipated error
+        throw e;
+      }
+    }
+    try {
+      fs__default.unlinkSync(fdPath[1]);
+    }
+    catch (e) {
+      if (!isENOENT(e)) {
+        // reraise any unanticipated error
+        throw e;
+      }
+    }
+  }, [fd, name]);
+
+  if (!opts.keep) {
+    _removeObjects.unshift(removeCallback);
+  }
+
+  return removeCallback;
+}
+
+/**
+ * Prepares the callback for removal of the temporary directory.
+ *
+ * @param {string} name
+ * @param {Object} opts
+ * @returns {Function} the callback
+ * @private
+ */
+function _prepareTmpDirRemoveCallback(name, opts) {
+  const removeFunction = opts.unsafeCleanup ? _rmdirRecursiveSync : fs__default.rmdirSync.bind(fs__default);
+  const removeCallback = _prepareRemoveCallback(removeFunction, name);
+
+  if (!opts.keep) {
+    _removeObjects.unshift(removeCallback);
+  }
+
+  return removeCallback;
+}
+
+/**
+ * Creates a guarded function wrapping the removeFunction call.
+ *
+ * @param {Function} removeFunction
+ * @param {Object} arg
+ * @returns {Function}
+ * @private
+ */
+function _prepareRemoveCallback(removeFunction, arg) {
+  var called = false;
+
+  return function _cleanupCallback(next) {
+    if (!called) {
+      const index = _removeObjects.indexOf(_cleanupCallback);
+      if (index >= 0) {
+        _removeObjects.splice(index, 1);
+      }
+
+      called = true;
+      removeFunction(arg);
+    }
+
+    if (next) next(null);
+  };
+}
+
+/**
+ * The garbage collector.
+ *
+ * @private
+ */
+function _garbageCollector() {
+  if (_uncaughtException && !_gracefulCleanup) {
+    return;
+  }
+
+  // the function being called removes itself from _removeObjects,
+  // loop until _removeObjects is empty
+  while (_removeObjects.length) {
+    try {
+      _removeObjects[0].call(null);
+    } catch (e) {
+      // already removed?
+    }
+  }
+}
+
+/**
+ * Helper for testing against EBADF to compensate changes made to Node 7.x under Windows.
+ */
+function isEBADF(error) {
+  return isExpectedError(error, -EBADF, 'EBADF');
+}
+
+/**
+ * Helper for testing against ENOENT to compensate changes made to Node 7.x under Windows.
+ */
+function isENOENT(error) {
+  return isExpectedError(error, -ENOENT, 'ENOENT');
+}
+
+/**
+ * Helper to determine whether the expected error code matches the actual code and errno,
+ * which will differ between the supported node versions.
+ *
+ * - Node >= 7.0:
+ *   error.code {String}
+ *   error.errno {String|Number} any numerical value will be negated
+ *
+ * - Node >= 6.0 < 7.0:
+ *   error.code {String}
+ *   error.errno {Number} negated
+ *
+ * - Node >= 4.0 < 6.0: introduces SystemError
+ *   error.code {String}
+ *   error.errno {Number} negated
+ *
+ * - Node >= 0.10 < 4.0:
+ *   error.code {Number} negated
+ *   error.errno n/a
+ */
+function isExpectedError(error, code, errno) {
+  return error.code == code || error.code == errno;
+}
+
+/**
+ * Sets the graceful cleanup.
+ *
+ * Also removes the created files and directories when an uncaught exception occurs.
+ */
+function setGracefulCleanup() {
+  _gracefulCleanup = true;
+}
+
+const version = process.versions.node.split('.').map(function (value) {
+  return parseInt(value, 10);
+});
+
+if (version[0] === 0 && (version[1] < 9 || version[1] === 9 && version[2] < 5)) {
+  process.addListener('uncaughtException', function _uncaughtExceptionThrown(err) {
+    _uncaughtException = true;
+    _garbageCollector();
+
+    throw err;
+  });
+}
+
+process.addListener('exit', function _exit(code) {
+  if (code) _uncaughtException = true;
+  _garbageCollector();
+});
+
+/**
+ * Configuration options.
+ *
+ * @typedef {Object} Options
+ * @property {?number} tries the number of tries before give up the name generation
+ * @property {?string} template the "mkstemp" like filename template
+ * @property {?string} name fix name
+ * @property {?string} dir the tmp directory to use
+ * @property {?string} prefix prefix for the generated name
+ * @property {?string} postfix postfix for the generated name
+ */
+
+/**
+ * @typedef {Object} FileSyncObject
+ * @property {string} name the name of the file
+ * @property {string} fd the file descriptor
+ * @property {fileCallback} removeCallback the callback function to remove the file
+ */
+
+/**
+ * @typedef {Object} DirSyncObject
+ * @property {string} name the name of the directory
+ * @property {fileCallback} removeCallback the callback function to remove the directory
+ */
+
+/**
+ * @callback tmpNameCallback
+ * @param {?Error} err the error object if anything goes wrong
+ * @param {string} name the temporary file name
+ */
+
+/**
+ * @callback fileCallback
+ * @param {?Error} err the error object if anything goes wrong
+ * @param {string} name the temporary file name
+ * @param {number} fd the file descriptor
+ * @param {cleanupCallback} fn the cleanup callback function
+ */
+
+/**
+ * @callback dirCallback
+ * @param {?Error} err the error object if anything goes wrong
+ * @param {string} name the temporary file name
+ * @param {cleanupCallback} fn the cleanup callback function
+ */
+
+/**
+ * Removes the temporary created file or directory.
+ *
+ * @callback cleanupCallback
+ * @param {simpleCallback} [next] function to call after entry was removed
+ */
+
+/**
+ * Callback function for function composition.
+ * @see {@link https://github.com/raszi/node-tmp/issues/57|raszi/node-tmp#57}
+ *
+ * @callback simpleCallback
+ */
+
+// exporting all the needed methods
+var tmpdir = tmpDir;
+
+var dir_1 = dir;
+var dirSync_1 = dirSync;
+
+var file_1 = file;
+var fileSync_1 = fileSync;
+
+var tmpName_1 = tmpName;
+var tmpNameSync_1 = tmpNameSync;
+
+var setGracefulCleanup_1 = setGracefulCleanup;
+
+var tmp = {
+	tmpdir: tmpdir,
+	dir: dir_1,
+	dirSync: dirSync_1,
+	file: file_1,
+	fileSync: fileSync_1,
+	tmpName: tmpName_1,
+	tmpNameSync: tmpNameSync_1,
+	setGracefulCleanup: setGracefulCleanup_1
+};
+
+var commonjsGlobal = typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+
+function commonjsRequire () {
+	throw new Error('Dynamic requires are not currently supported by rollup-plugin-commonjs');
+}
+
+// global key for user preferred registration
+var REGISTRATION_KEY = '@@any-promise/REGISTRATION',
+    // Prior registration (preferred or detected)
+    registered = null;
+
+/**
+ * Registers the given implementation.  An implementation must
+ * be registered prior to any call to `require("any-promise")`,
+ * typically on application load.
+ *
+ * If called with no arguments, will return registration in
+ * following priority:
+ *
+ * For Node.js:
+ *
+ * 1. Previous registration
+ * 2. global.Promise if node.js version >= 0.12
+ * 3. Auto detected promise based on first sucessful require of
+ *    known promise libraries. Note this is a last resort, as the
+ *    loaded library is non-deterministic. node.js >= 0.12 will
+ *    always use global.Promise over this priority list.
+ * 4. Throws error.
+ *
+ * For Browser:
+ *
+ * 1. Previous registration
+ * 2. window.Promise
+ * 3. Throws error.
+ *
+ * Options:
+ *
+ * Promise: Desired Promise constructor
+ * global: Boolean - Should the registration be cached in a global variable to
+ * allow cross dependency/bundle registration?  (default true)
+ */
+var loader = function(root, loadImplementation){
+  return function register(implementation, opts){
+    implementation = implementation || null;
+    opts = opts || {};
+    // global registration unless explicitly  {global: false} in options (default true)
+    var registerGlobal = opts.global !== false;
+
+    // load any previous global registration
+    if(registered === null && registerGlobal){
+      registered = root[REGISTRATION_KEY] || null;
+    }
+
+    if(registered !== null
+        && implementation !== null
+        && registered.implementation !== implementation){
+      // Throw error if attempting to redefine implementation
+      throw new Error('any-promise already defined as "'+registered.implementation+
+        '".  You can only register an implementation before the first '+
+        ' call to require("any-promise") and an implementation cannot be changed')
+    }
+
+    if(registered === null){
+      // use provided implementation
+      if(implementation !== null && typeof opts.Promise !== 'undefined'){
+        registered = {
+          Promise: opts.Promise,
+          implementation: implementation
+        };
+      } else {
+        // require implementation if implementation is specified but not provided
+        registered = loadImplementation(implementation);
+      }
+
+      if(registerGlobal){
+        // register preference globally in case multiple installations
+        root[REGISTRATION_KEY] = registered;
+      }
+    }
+
+    return registered
+  }
+};
+
+var register = loader(commonjsGlobal, loadImplementation);
+
+/**
+ * Node.js version of loadImplementation.
+ *
+ * Requires the given implementation and returns the registration
+ * containing {Promise, implementation}
+ *
+ * If implementation is undefined or global.Promise, loads it
+ * Otherwise uses require
+ */
+function loadImplementation(implementation){
+  var impl = null;
+
+  if(shouldPreferGlobalPromise(implementation)){
+    // if no implementation or env specified use global.Promise
+    impl = {
+      Promise: commonjsGlobal.Promise,
+      implementation: 'global.Promise'
+    };
+  } else if(implementation){
+    // if implementation specified, require it
+    var lib = commonjsRequire(implementation);
+    impl = {
+      Promise: lib.Promise || lib,
+      implementation: implementation
+    };
+  } else {
+    // try to auto detect implementation. This is non-deterministic
+    // and should prefer other branches, but this is our last chance
+    // to load something without throwing error
+    impl = tryAutoDetect();
+  }
+
+  if(impl === null){
+    throw new Error('Cannot find any-promise implementation nor'+
+      ' global.Promise. You must install polyfill or call'+
+      ' require("any-promise/register") with your preferred'+
+      ' implementation, e.g. require("any-promise/register/bluebird")'+
+      ' on application load prior to any require("any-promise").')
+  }
+
+  return impl
+}
+
+/**
+ * Determines if the global.Promise should be preferred if an implementation
+ * has not been registered.
+ */
+function shouldPreferGlobalPromise(implementation){
+  if(implementation){
+    return implementation === 'global.Promise'
+  } else if(typeof commonjsGlobal.Promise !== 'undefined'){
+    // Load global promise if implementation not specified
+    // Versions < 0.11 did not have global Promise
+    // Do not use for version < 0.12 as version 0.11 contained buggy versions
+    var version = (/v(\d+)\.(\d+)\.(\d+)/).exec(process.version);
+    return !(version && +version[1] == 0 && +version[2] < 12)
+  }
+
+  // do not have global.Promise or another implementation was specified
+  return false
+}
+
+/**
+ * Look for common libs as last resort there is no guarantee that
+ * this will return a desired implementation or even be deterministic.
+ * The priority is also nearly arbitrary. We are only doing this
+ * for older versions of Node.js <0.12 that do not have a reasonable
+ * global.Promise implementation and we the user has not registered
+ * the preference. This preserves the behavior of any-promise <= 0.1
+ * and may be deprecated or removed in the future
+ */
+function tryAutoDetect(){
+  var libs = [
+      "es6-promise",
+      "promise",
+      "native-promise-only",
+      "bluebird",
+      "rsvp",
+      "when",
+      "q",
+      "pinkie",
+      "lie",
+      "vow"];
+  var i = 0, len = libs.length;
+  for(; i < len; i++){
+    try {
+      return loadImplementation(libs[i])
+    } catch(e){}
+  }
+  return null
+}
+
+var anyPromise = register().Promise;
+
+var streamToArray = function (stream$$1, done) {
+  if (!stream$$1) {
+    // no arguments, meaning stream = this
+    stream$$1 = this;
+  } else if (typeof stream$$1 === 'function') {
+    // stream = this, callback passed
+    done = stream$$1;
+    stream$$1 = this;
+  }
+
+  var deferred;
+  if (!stream$$1.readable) deferred = anyPromise.resolve([]);
+  else deferred = new anyPromise(function (resolve, reject) {
+    // stream is already ended
+    if (!stream$$1.readable) return resolve([])
+
+    var arr = [];
+
+    stream$$1.on('data', onData);
+    stream$$1.on('end', onEnd);
+    stream$$1.on('error', onEnd);
+    stream$$1.on('close', onClose);
+
+    function onData(doc) {
+      arr.push(doc);
+    }
+
+    function onEnd(err) {
+      if (err) reject(err);
+      else resolve(arr);
+      cleanup();
+    }
+
+    function onClose() {
+      resolve(arr);
+      cleanup();
+    }
+
+    function cleanup() {
+      arr = null;
+      stream$$1.removeListener('data', onData);
+      stream$$1.removeListener('end', onEnd);
+      stream$$1.removeListener('error', onEnd);
+      stream$$1.removeListener('close', onClose);
+    }
+  });
+
+  if (typeof done === 'function') {
+    deferred.then(function (arr) {
+      process.nextTick(function() {
+        done(null, arr);
+      });
+    }, done);
+  }
+
+  return deferred
+};
+
+// Returns a wrapper function that returns a wrapped callback
+// The wrapper function should do some stuff, and return a
+// presumably different callback function.
+// This makes sure that own properties are retained, so that
+// decorations and such are not lost along the way.
+var wrappy_1 = wrappy;
+function wrappy (fn, cb) {
+  if (fn && cb) return wrappy(fn)(cb)
+
+  if (typeof fn !== 'function')
+    throw new TypeError('need wrapper function')
+
+  Object.keys(fn).forEach(function (k) {
+    wrapper[k] = fn[k];
+  });
+
+  return wrapper
+
+  function wrapper() {
+    var args = new Array(arguments.length);
+    for (var i = 0; i < args.length; i++) {
+      args[i] = arguments[i];
+    }
+    var ret = fn.apply(this, args);
+    var cb = args[args.length-1];
+    if (typeof ret === 'function' && ret !== cb) {
+      Object.keys(cb).forEach(function (k) {
+        ret[k] = cb[k];
+      });
+    }
+    return ret
+  }
+}
+
+var once_1 = wrappy_1(once);
+
+once.proto = once(function () {
+  Object.defineProperty(Function.prototype, 'once', {
+    value: function () {
+      return once(this)
+    },
+    configurable: true
+  });
+});
+
+function once (fn) {
+  var f = function () {
+    if (f.called) return f.value
+    f.called = true;
+    return f.value = fn.apply(this, arguments)
+  };
+  f.called = false;
+  return f
+}
+
+var noop = function() {};
+
+var isRequest = function(stream$$1) {
+	return stream$$1.setHeader && typeof stream$$1.abort === 'function';
+};
+
+var isChildProcess = function(stream$$1) {
+	return stream$$1.stdio && Array.isArray(stream$$1.stdio) && stream$$1.stdio.length === 3
+};
+
+var eos = function(stream$$1, opts, callback) {
+	if (typeof opts === 'function') return eos(stream$$1, null, opts);
+	if (!opts) opts = {};
+
+	callback = once_1(callback || noop);
+
+	var ws = stream$$1._writableState;
+	var rs = stream$$1._readableState;
+	var readable = opts.readable || (opts.readable !== false && stream$$1.readable);
+	var writable = opts.writable || (opts.writable !== false && stream$$1.writable);
+
+	var onlegacyfinish = function() {
+		if (!stream$$1.writable) onfinish();
+	};
+
+	var onfinish = function() {
+		writable = false;
+		if (!readable) callback();
+	};
+
+	var onend = function() {
+		readable = false;
+		if (!writable) callback();
+	};
+
+	var onexit = function(exitCode) {
+		callback(exitCode ? new Error('exited with error code: ' + exitCode) : null);
+	};
+
+	var onclose = function() {
+		if (readable && !(rs && rs.ended)) return callback(new Error('premature close'));
+		if (writable && !(ws && ws.ended)) return callback(new Error('premature close'));
+	};
+
+	var onrequest = function() {
+		stream$$1.req.on('finish', onfinish);
+	};
+
+	if (isRequest(stream$$1)) {
+		stream$$1.on('complete', onfinish);
+		stream$$1.on('abort', onclose);
+		if (stream$$1.req) onrequest();
+		else stream$$1.on('request', onrequest);
+	} else if (writable && !ws) { // legacy streams
+		stream$$1.on('end', onlegacyfinish);
+		stream$$1.on('close', onlegacyfinish);
+	}
+
+	if (isChildProcess(stream$$1)) stream$$1.on('exit', onexit);
+
+	stream$$1.on('end', onend);
+	stream$$1.on('finish', onfinish);
+	if (opts.error !== false) stream$$1.on('error', callback);
+	stream$$1.on('close', onclose);
+
+	return function() {
+		stream$$1.removeListener('complete', onfinish);
+		stream$$1.removeListener('abort', onclose);
+		stream$$1.removeListener('request', onrequest);
+		if (stream$$1.req) stream$$1.req.removeListener('finish', onfinish);
+		stream$$1.removeListener('end', onlegacyfinish);
+		stream$$1.removeListener('close', onlegacyfinish);
+		stream$$1.removeListener('finish', onfinish);
+		stream$$1.removeListener('exit', onexit);
+		stream$$1.removeListener('end', onend);
+		stream$$1.removeListener('error', callback);
+		stream$$1.removeListener('close', onclose);
+	};
+};
+
+var endOfStream = eos;
+
+var streamToPromise_1 = streamToPromise;
+
+function streamToPromise (stream$$1) {
+  if (stream$$1.readable) return fromReadable(stream$$1)
+  if (stream$$1.writable) return fromWritable(stream$$1)
+  return anyPromise.resolve()
+}
+
+function fromReadable (stream$$1) {
+  var promise = streamToArray(stream$$1);
+
+  // Ensure stream is in flowing mode
+  if (stream$$1.resume) stream$$1.resume();
+
+  return promise
+    .then(function concat (parts) {
+      if (stream$$1._readableState && stream$$1._readableState.objectMode) {
+        return parts
+      }
+      return Buffer.concat(parts.map(bufferize))
+    })
+}
+
+function fromWritable (stream$$1) {
+  return new anyPromise(function (resolve, reject) {
+    endOfStream(stream$$1, function (err) {
+      (err ? reject : resolve)(err);
+    });
+  })
+}
+
+function bufferize (chunk) {
+  return Buffer.isBuffer(chunk) ? chunk : new Buffer(chunk)
+}
+
+function fluff(inStream, path$$1) {
+  let inStreamIsDone = false;
+  const outStream = new stream.PassThrough({});
+
+  process.stderr.write(`fluff: ${path$$1}\n`);
+
+  outStream.path = path$$1;
+
+  const writeStream = fs.createWriteStream(path$$1);
+
+  inStream.pipe(writeStream);
+
+  inStream.on('end', () => {
+    inStreamIsDone = true;
+    process.stderr.write(`fluff: done buffering to ${path$$1} \n`);
+  });
+
+  outStream.on('error', () => inStream.end());
+
+  reStream();
+
+  function reStream() {
+    const readStream = fs.createReadStream(path$$1, {start: outStream.bytesWritten});
+
+    if (!inStreamIsDone)
+      readStream.on('close', () => setTimeout(() => reStream(), 100));
+
+    readStream.pipe(outStream, {end: inStreamIsDone});
+  }
+
+  return outStream
+}
+
+tmp.file((err, path$$1, _, cleanup) => {
+  if (err)
+    throw err
+
+  streamToPromise_1(fluff(process.stdin, path$$1).pipe(process.stdout))
+    .then(cleanup)
+    .catch(error => process.stderr.write(`fluff: ${error}\n`));
+});

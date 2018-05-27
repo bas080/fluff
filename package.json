@@ -1,0 +1,44 @@
+{
+  "name": "fluff",
+  "version": "0.0.0",
+  "description": "Buffer to file system",
+  "main": "./lib/index.js",
+  "dependencies": {
+    "stream-to-promise": "^2.2.0",
+    "tmp": "^0.0.33"
+  },
+  "bin": {
+    "fluff": "./dist/fluff"
+  },
+  "engines": {
+    "node": ">= 8.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^4.19.1",
+    "pre-commit": "^1.2.2",
+    "pre-push": "^0.1.1",
+    "promisify": "0.0.3",
+    "rollup": "^0.59.3",
+    "rollup-plugin-commonjs": "^9.1.3",
+    "rollup-plugin-node-resolve": "^3.3.0",
+    "tap": "^12.0.1"
+  },
+  "scripts": {
+    "lint": "eslint index*.js lib/",
+    "build": "rollup -c rollup.config.js",
+    "test": "npm run build && tap ./index.spec.js",
+    "precommit": "./script/precommit",
+    "prepush": "./script/prepush",
+    "prepublishOnly": "./script/prepublish"
+  },
+  "precommit": "precommit",
+  "prepush": "prepush",
+  "keywords": [
+    "buffer",
+    "fs",
+    "file",
+    "stream"
+  ],
+  "author": "Bas Huis",
+  "license": "MIT"
+}

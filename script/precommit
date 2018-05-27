@@ -1,0 +1,86 @@
+#!/bin/bash
+
+set -e
+
+unset npm_config_prefix
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+# helpers
+
+source_files() {
+  echo ./index.js
+  echo ./index.spec.js
+  find $PWD/lib/ -type f
+}
+
+error() {
+  echo "$@"
+  return 1
+}
+
+# tests
+
+have_source_files_that_pass_linting() {
+  npm run lint &> /dev/null
+}
+
+have_script_files_be_executable() {
+  find ./script/ -type f | xargs -l -P 1 test -x
+}
+
+support_following_node_versions() {
+  for v in 10 9 8 7 6; do
+    ((nvm install $v && nvm use $v && npm test -- --100) &> /dev/null || error "shoud support $v")
+  done | sort -n
+}
+
+install_dependencies() {
+  npm i &> /dev/null
+}
+
+install_bin_correctly() {
+  {
+    npm prune
+    npm run build
+    npm link
+    which fluff
+  } &> /dev/null
+}
+
+build_an_executable_file() {
+  test -x ./dist/fluff || error "script should be executable"
+}
+
+work_with_bash_pipes() {
+  cat fixture/file.txt | node ./dist/fluff > fixture/file.tmp.txt 2> /dev/null
+  diff fixture/file.txt fixture/file.tmp.txt
+  rm fixture/file.tmp.txt
+}
+
+commit_package_lock_file() {
+  git diff ./package-lock.json
+}
+
+paths_use_dirname() {
+  ! grep '\\' $(source_files) | grep -v '__dirname' \
+    | grep -v '\n' # ignore newline characters
+}
+
+# playground
+
+should() {
+  local tmp=$(mktemp)
+
+  eval "$@" > $tmp \
+    && (test -s $tmp && (echo -e "ugly\t$@\t$tmp" && cat $tmp) || echo -e "good\t$@\t$tmp") \
+    || (error -e "bad\t$@\t$tmp" && cat $tmp)
+}
+
+should have_script_files_be_executable
+should install_dependencies
+should have_source_files_that_pass_linting
+should install_bin_correctly
+should support_following_node_versions
+should paths_use_dirname
+should work_with_bash_pipes
+should commit_package_lock_file

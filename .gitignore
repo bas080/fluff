@@ -1,0 +1,5 @@
+.local.bashrc
+.nyc_output/
+.please/
+fixture/file.tmp.txt
+node_modules/
