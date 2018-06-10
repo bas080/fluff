@@ -21,4 +21,4 @@ version=$(node -p "require('./package.json').version")
 echo "publishing $version"
 
 git tag $version
-git push $version
+git push --tags $version
