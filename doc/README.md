@@ -27,11 +27,7 @@ or having the path where the executable file is located be added to the PATH
 variable, you can start using it in your command line.
 
 ```sh
-npm install -g fluff
-
-podcast_url="http://open.live.bbc.co.uk/mediaselector/5/redir/version/2.0/mediaset/audio-nondrm-download-low/proto/http/vpid/p068rfy7.mp3"
-
-curl -o - "$podcast_url" | fluff | mplayer -
+require ./doc/example/cli.sh
 ```
 
 This shows how you can use fluff to stream big files while having less
@@ -47,33 +43,9 @@ The command line interface uses this lib module. We'll that as an example on
 how to use fluff's lib module.
 
 ```js
-'use strict'
-
-import tmp from 'tmp'
-import streamToPromise from 'stream-to-promise'
-import fluffStream from './lib/index.js'
-import {createReadStream, createWriteStream} from 'fs'
-
-tmp.file((err, path, _, cleanup) => {
-  if (err)
-    throw err
-
-  process.stderr.write(`fluff: ${path}\n`)
-  process.stdin.on('end', () => {
-    process.stderr.write(`fluff: done buffering to ${path} \n`)
-  })
-
-  streamToPromise(fluffStream({
-    inStream: process.stdin,
-    createReadStream: () => createReadStream(path),
-    createWriteStream: () => createWriteStream(path, {start: process.stdout.bytesWritten})
-  }).pipe(process.stdout))
-    .then(cleanup)
-    .catch(error => process.stderr.write(`fluff: ${error}\n`))
-})
+require ./index.js
 ```
 
 You can see that the creation of the read and write stream is done outside of
 the fluff stream function. This allows you to use different types of read and
 write streams. They don't have to be your local file system.
-
