@@ -4,6 +4,11 @@ set -e
 
 source ./script/prepush
 
+have_up_to_date_documentation() {
+  mash ./doc/README.md > README.md
+  git diff --exit-code ./README.md
+}
+
 have_no_fixup_commits() {
   ! git log --oneline | grep 'fixup!'
 }
@@ -14,6 +19,7 @@ not_differ_from_origin_master() {
 }
 
 should have_no_fixup_commits
+should have_up_to_date_documentation
 should not_differ_from_origin_master
 
 version=$(node -p "require('./package.json').version")
