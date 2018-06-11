@@ -11,16 +11,16 @@ const path = require('path')
 
 
 test('input stream is written to the buffer file', t => {
-  const fluff = spawn(path.join(__dirname, './dist/fluff'))
+  const fluffer = spawn(path.join(__dirname, './dist/fluffer'))
 
   createReadStream(path.join(__dirname, './fixture/file.txt'))
-    .pipe(fluff.stdin)
+    .pipe(fluffer.stdin)
 
-  const fluff2 = fluff.stdout.pipe(createWriteStream(path.join(__dirname, './fixture/file.tmp.txt')))
+  const fluffer2 = fluffer.stdout.pipe(createWriteStream(path.join(__dirname, './fixture/file.tmp.txt')))
 
-  fluff.stderr.pipe(process.stderr)
+  fluffer.stderr.pipe(process.stderr)
 
-  return streamToPromise(fluff2)
+  return streamToPromise(fluffer2)
     .then(() => Promise.all([
       readFilePromise(path.join(__dirname, './fixture/file.txt')),
       readFilePromise(path.join(__dirname, './fixture/file.tmp.txt'))
@@ -38,7 +38,7 @@ test('delayed input stream is written to the buffer file', t => {
   let times=total
   let index = 0
   t.plan(times)
-  const fluff = spawn(path.join(__dirname, './dist/fluff'))
+  const fluffer = spawn(path.join(__dirname, './dist/fluffer'))
   const assertStream = new PassThrough()
   const readStream = new Readable({
     read() {
@@ -58,6 +58,6 @@ test('delayed input stream is written to the buffer file', t => {
     }
   })
 
-  readStream.pipe(fluff.stdin)
-  fluff.stdout.pipe(assertStream)
+  readStream.pipe(fluffer.stdin)
+  fluffer.stdout.pipe(assertStream)
 })

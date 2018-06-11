@@ -43,16 +43,16 @@ install_bin_correctly() {
     npm prune
     npm run build
     npm link
-    which fluff
+    which fluffer
   } &> /dev/null
 }
 
 build_an_executable_file() {
-  test -x ./dist/fluff || error "script should be executable"
+  test -x ./dist/fluffer || error "script should be executable"
 }
 
 work_with_bash_pipes() {
-  cat fixture/file.txt | node ./dist/fluff > fixture/file.tmp.txt 2> /dev/null
+  cat fixture/file.txt | node ./dist/fluffer > fixture/file.tmp.txt 2> /dev/null
   diff fixture/file.txt fixture/file.tmp.txt
   rm fixture/file.tmp.txt
 }

@@ -1,5 +1,5 @@
 {
-  "name": "fluff",
+  "name": "fluffer",
   "version": "0.0.0",
   "description": "Buffer to file system",
   "main": "./lib/index.js",
@@ -8,7 +8,7 @@
     "tmp": "^0.0.33"
   },
   "bin": {
-    "fluff": "./dist/fluff"
+    "fluffer": "./dist/fluffer"
   },
   "engines": {
     "node": ">= 8.0.0"

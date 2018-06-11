@@ -1,5 +1,5 @@
 #!/bin/bash
 
-npm install fluff -g
+npm install fluffer -g
 
-which fluff && echo 'bin is installed'
+which fluffer && echo 'bin is installed'

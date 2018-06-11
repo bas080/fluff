@@ -4,7 +4,7 @@ import commonjs from 'rollup-plugin-commonjs'
 export default {
   input: './index.js',
   output: {
-    file: './dist/fluff',
+    file: './dist/fluffer',
     format: 'cjs',
     banner: '#!/usr/bin/env node',
   },

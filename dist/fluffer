@@ -1067,7 +1067,7 @@ function bufferize (chunk) {
   return Buffer.isBuffer(chunk) ? chunk : new Buffer(chunk)
 }
 
-function fluff({
+function fluffer({
   inStream,
   createReadStream,
   createWriteStream
@@ -1103,16 +1103,16 @@ tmp.file((err, path$$1, _, cleanup) => {
   if (err)
     throw err
 
-  process.stderr.write(`fluff: ${path$$1}\n`);
+  process.stderr.write(`fluffer: ${path$$1}\n`);
   process.stdin.on('end', () => {
-    process.stderr.write(`fluff: done buffering to ${path$$1} \n`);
+    process.stderr.write(`fluffer: done buffering to ${path$$1} \n`);
   });
 
-  streamToPromise_1(fluff({
+  streamToPromise_1(fluffer({
     inStream: process.stdin,
     createReadStream: () => fs.createReadStream(path$$1),
     createWriteStream: () => fs.createWriteStream(path$$1, {start: process.stdout.bytesWritten})
   }).pipe(process.stdout))
     .then(cleanup)
-    .catch(error => process.stderr.write(`fluff: ${error}\n`));
+    .catch(error => process.stderr.write(`fluffer: ${error}\n`));
 });
