@@ -1067,29 +1067,28 @@ function bufferize (chunk) {
   return Buffer.isBuffer(chunk) ? chunk : new Buffer(chunk)
 }
 
-function fluff(inStream, path$$1) {
+function fluff({
+  inStream,
+  createReadStream,
+  createWriteStream
+}) {
   let inStreamIsDone = false;
   const outStream = new stream.PassThrough({});
 
-  process.stderr.write(`fluff: ${path$$1}\n`);
-
-  outStream.path = path$$1;
-
-  const writeStream = fs.createWriteStream(path$$1);
+  const writeStream = createWriteStream();
 
   inStream.pipe(writeStream);
-
-  inStream.on('end', () => {
-    inStreamIsDone = true;
-    process.stderr.write(`fluff: done buffering to ${path$$1} \n`);
-  });
 
   outStream.on('error', () => inStream.end());
 
   reStream();
 
+  process.stdin.on('end', () => {
+    inStreamIsDone = true;
+  });
+
   function reStream() {
-    const readStream = fs.createReadStream(path$$1, {start: outStream.bytesWritten});
+    const readStream = createReadStream();
 
     if (!inStreamIsDone)
       readStream.on('close', () => setTimeout(() => reStream(), 100));
@@ -1104,7 +1103,16 @@ tmp.file((err, path$$1, _, cleanup) => {
   if (err)
     throw err
 
-  streamToPromise_1(fluff(process.stdin, path$$1).pipe(process.stdout))
+  process.stderr.write(`fluff: ${path$$1}\n`);
+  process.stdin.on('end', () => {
+    process.stderr.write(`fluff: done buffering to ${path$$1} \n`);
+  });
+
+  streamToPromise_1(fluff({
+    inStream: process.stdin,
+    createReadStream: () => fs.createReadStream(path$$1),
+    createWriteStream: () => fs.createWriteStream(path$$1, {start: process.stdout.bytesWritten})
+  }).pipe(process.stdout))
     .then(cleanup)
     .catch(error => process.stderr.write(`fluff: ${error}\n`));
 });
