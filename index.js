@@ -14,10 +14,20 @@ tmp.file((err, path, _, cleanup) => {
     process.stderr.write(`fluffer: done buffering to ${path} \n`)
   })
 
+  let readStream = null
+
   streamToPromise(flufferStream({
     inStream: process.stdin,
-    createReadStream: () => createReadStream(path),
-    createWriteStream: () => createWriteStream(path, {start: process.stdout.bytesWritten})
+    createReadStream: () => {
+      readStream = createReadStream(path, {
+        start: readStream
+          ? process.stdout.bytesWritten
+          : 0
+      })
+
+      return readStream
+    },
+    createWriteStream: () => createWriteStream(path)
   }).pipe(process.stdout))
     .then(cleanup)
     .catch(error => process.stderr.write(`fluffer: ${error}\n`))

@@ -1072,29 +1072,23 @@ function fluffer({
   createReadStream,
   createWriteStream
 }) {
-  let inStreamIsDone = false;
+  let readStream = null;
   const outStream = new stream.PassThrough({});
-
   const writeStream = createWriteStream();
 
   inStream.pipe(writeStream);
 
   outStream.on('error', () => inStream.end());
 
-  reStream();
+  inStream.on('data', () => {
+    if (readStream && !readStream._readableState.ended) return
 
-  process.stdin.on('end', () => {
-    inStreamIsDone = true;
+    readStream = createReadStream();
+
+    setTimeout(() => {
+      readStream.pipe(outStream, {end: writeStream._writableState.ended});
+    }, 500);
   });
-
-  function reStream() {
-    const readStream = createReadStream();
-
-    if (!inStreamIsDone)
-      readStream.on('close', () => setTimeout(() => reStream(), 100));
-
-    readStream.pipe(outStream, {end: inStreamIsDone});
-  }
 
   return outStream
 }
@@ -1108,10 +1102,20 @@ tmp.file((err, path$$1, _, cleanup) => {
     process.stderr.write(`fluffer: done buffering to ${path$$1} \n`);
   });
 
+  let readStream = null;
+
   streamToPromise_1(fluffer({
     inStream: process.stdin,
-    createReadStream: () => fs.createReadStream(path$$1),
-    createWriteStream: () => fs.createWriteStream(path$$1, {start: process.stdout.bytesWritten})
+    createReadStream: () => {
+      readStream = fs.createReadStream(path$$1, {
+        start: readStream
+          ? process.stdout.bytesWritten
+          : 0
+      });
+
+      return readStream
+    },
+    createWriteStream: () => fs.createWriteStream(path$$1)
   }).pipe(process.stdout))
     .then(cleanup)
     .catch(error => process.stderr.write(`fluffer: ${error}\n`));

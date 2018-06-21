@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "eslint": "^4.19.1",
+    "eslint-tap": "^2.0.1",
     "pre-commit": "^1.2.2",
     "pre-push": "^0.1.1",
     "promisify": "0.0.3",
@@ -26,7 +27,7 @@
   "scripts": {
     "lint": "eslint index*.js lib/",
     "build": "rollup -c rollup.config.js",
-    "test": "npm run build && tap ./index.spec.js",
+    "test": "npm run build 2> /dev/null && tap ./index.spec.js",
     "precommit": "./script/precommit",
     "prepush": "./script/prepush",
     "prepublishOnly": "./script/prepublish"
