@@ -1,5 +1,7 @@
 # fluff
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/bas080/fluffer.svg)](https://greenkeeper.io/)
+
 Buffers stdin to a temp file which is then used to stream to stdout.
 
 ## Reasoning
